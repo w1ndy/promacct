@@ -3,6 +3,7 @@
 // This file is distributed under a 2-clause BSD license.
 // See the LICENSE file for details.
 
+#include <iostream>
 #include <cstdint>
 #include <optional>
 #include <sstream>
@@ -13,12 +14,7 @@
 #include "packet_counter.h"
 
 PacketCounter::PacketCounter(const IPv4Ranges* aggregation_ipv4)
-    : aggregation_ipv4_(aggregation_ipv4),
-      packet_size_bytes_ipv4_tx_(aggregation_ipv4_->GetLength()),
-      packet_size_bytes_ipv4_rx_(aggregation_ipv4_->GetLength()) {
-  // Histograms for IPv4 address aggregation are already preallocated,
-  // so that ProcessIPv4Packet() doesn't need to do any resizing.
-}
+    : range_ipv4_(aggregation_ipv4) {}
 
 void PacketCounter::ProcessIPv4Packet(std::uint32_t src, std::uint32_t dst,
                                       std::uint8_t protocol,
@@ -27,18 +23,20 @@ void PacketCounter::ProcessIPv4Packet(std::uint32_t src, std::uint32_t dst,
 
   // Aggregation on source IPv4 address.
   {
-    std::optional<std::size_t> index =
-        aggregation_ipv4_->GetIndexByAddress(src);
-    if (index)
-      packet_size_bytes_ipv4_tx_[*index].Record(protocol, original_length);
+    std::optional<std::size_t> index = range_ipv4_->GetIndexByAddress(src);
+    if (index) {
+      valid_address_ipv4_[*index] = true;
+      packet_size_bytes_ipv4_tx_[*index].Record(original_length);
+    }
   }
 
   // Aggregation on destination IPv4 address.
   {
-    std::optional<std::size_t> index =
-        aggregation_ipv4_->GetIndexByAddress(dst);
-    if (index)
-      packet_size_bytes_ipv4_rx_[*index].Record(protocol, original_length);
+    std::optional<std::size_t> index = range_ipv4_->GetIndexByAddress(dst);
+    if (index) {
+      valid_address_ipv4_[*index] = true;
+      packet_size_bytes_ipv4_rx_[*index].Record(original_length);
+    }
   }
 }
 
@@ -50,11 +48,12 @@ void PacketCounter::PrintMetrics(const MetricsLabels& labels,
                                  MetricsPage* output) {
   packet_size_bytes_all_.PrintMetrics("packet_size_bytes_all", labels, output);
 
-  for (std::size_t i = 0; i < aggregation_ipv4_->GetLength(); ++i) {
+  for (auto const &p : valid_address_ipv4_) {
+    auto i = p.first;
     // Combine the labels of the packet counter and the per-address
     // histogram.
     std::pair<const MetricsLabels*, std::uint32_t> addr =
-        aggregation_ipv4_->GetAddressByIndex(i);
+      range_ipv4_->GetAddressByIndex(i);
     MetricsLabelsJoiner joiner1(&labels, addr.first);
 
     // Add the IPv4 address as a label.

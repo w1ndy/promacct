@@ -28,6 +28,7 @@ class Pcap {
  public:
   // Create a pcap handle for a network device and start capturing.
   std::optional<std::string> Activate(const std::string& device,
+                                      int port,
                                       std::size_t snapshot_length,
                                       std::size_t buffer_length);
 

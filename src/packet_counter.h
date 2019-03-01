@@ -8,10 +8,12 @@
 
 #include <cstdint>
 #include <vector>
+#include <map>
 
 #include "histogram.h"
 #include "parsed_packet_processor.h"
 #include "protocol_histogram.h"
+#include "counter.h"
 
 class IPv4Ranges;
 class MetricsLabels;
@@ -34,21 +36,23 @@ class PacketCounter : public ParsedPacketProcessor {
   void PrintMetrics(const MetricsLabels& labels, MetricsPage* output);
 
  private:
-  typedef Histogram<64, 128, 256, 512, 1024, 2048> PacketSizeHistogram;
-  typedef ProtocolHistogram<PacketSizeHistogram> ProtocolPacketSizeHistogram;
+  // typedef Histogram<64, 128, 256, 512, 1024, 2048> PacketSizeHistogram;
+  // typedef ProtocolHistogram<PacketSizeHistogram> ProtocolPacketSizeHistogram;
 
-  const IPv4Ranges* const aggregation_ipv4_;
+  // const IPv4Ranges* const aggregation_ipv4_;
+  const IPv4Ranges* const range_ipv4_;
+  std::map<size_t, bool> valid_address_ipv4_;
 
   // Histogram storing the sizes of all incoming network packets.
-  PacketSizeHistogram packet_size_bytes_all_;
+  Counter packet_size_bytes_all_;
 
   // Per-IPv4 address histogram storing the sizes of all packets having
   // the address as its source.
-  std::vector<ProtocolPacketSizeHistogram> packet_size_bytes_ipv4_tx_;
+  std::map<size_t, Counter> packet_size_bytes_ipv4_tx_;
 
   // Per-IPv4 address histogram storing the sizes of all packets having
   // the address as its destination.
-  std::vector<ProtocolPacketSizeHistogram> packet_size_bytes_ipv4_rx_;
+  std::map<size_t, Counter> packet_size_bytes_ipv4_rx_;
 };
 
 #endif

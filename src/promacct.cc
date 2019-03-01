@@ -48,7 +48,7 @@ class PacketCounterServer : public WebserverRequestHandler {
 };
 
 void usage() {
-  std::cerr << "usage: promacct -i interface ... [-p httpport] "
+  std::cerr << "usage: promacct -i interface ... [-p httpport] [-m monitor_port]"
                "[-r startaddr-endaddr[:key=value...] ...]"
             << std::endl;
   std::exit(1);
@@ -67,11 +67,12 @@ int main(int argc, char* argv[]) {
   int ch;
   std::vector<std::string> interfaces;
   std::uint16_t httpport = 9112;
+  int monitor_port = -1;
   IPv4Ranges ranges;
   MetricsLabelsTerminator no_labels;
   std::forward_list<MetricsLabel> labels;
   std::forward_list<MetricsLabelsJoiner> joiners;
-  while ((ch = getopt(argc, argv, "i:p:r:")) != -1) {
+  while ((ch = getopt(argc, argv, "i:p:m:r:")) != -1) {
     switch (ch) {
       case 'i':
         // Network interface.
@@ -80,6 +81,10 @@ int main(int argc, char* argv[]) {
       case 'p':
         // Port number on which to bind the HTTP server.
         httpport = std::stoi(optarg);
+        break;
+      case 'm':
+        // port number to monitor
+        monitor_port = std::stoi(optarg);
         break;
       case 'r': {
         // IP range: startaddr-endaddr[:key=value...].
@@ -118,6 +123,11 @@ int main(int argc, char* argv[]) {
   if (argc != 0 || interfaces.empty())
     usage();
 
+  if (ranges.GetLength() == 0) {
+    // Add default ranges
+    ranges.AddRange(&no_labels, parse_ipv4_address("0.0.0.0"), parse_ipv4_address("255.255.255.255"));
+  }
+
   // Create pcap handles and allocate histograms.
   std::vector<Pcap> pcaps;
   std::vector<PacketCounter> packet_counters;
@@ -127,7 +137,7 @@ int main(int argc, char* argv[]) {
     pcaps.emplace_back();
     Pcap& pcap = pcaps.back();
     std::optional<std::string> error =
-        pcap.Activate(interface, PacketParser::BytesNeededIPv4, 1 << 24);
+        pcap.Activate(interface, monitor_port, PacketParser::BytesNeededIPv4, 1 << 24);
     if (error) {
       std::cerr << "Failed to activate pcap for interface " << interface << ": "
                 << *error << std::endl;

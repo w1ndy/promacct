@@ -16,6 +16,7 @@
 #include "raw_packet_processor.h"
 
 std::optional<std::string> Pcap::Activate(const std::string& device,
+                                          int port,
                                           std::size_t snapshot_length,
                                           std::size_t buffer_length) {
   char errbuf[PCAP_ERRBUF_SIZE];
@@ -30,6 +31,22 @@ std::optional<std::string> Pcap::Activate(const std::string& device,
 
   if (pcap_activate(pcap.get()) != 0)
     return std::string(pcap_geterr(pcap.get()));
+
+  if (port != -1) {
+    struct bpf_program fp;
+    bpf_u_int32 net, mask;
+    char filter_exp[64];
+    sprintf(filter_exp, "port %d", port);
+    if (pcap_lookupnet(device.c_str(), &net, &mask, errbuf) == -1) {
+      return std::string(pcap_geterr(pcap.get()));
+    }
+    if (pcap_compile(pcap.get(), &fp, filter_exp, 0, net) == -1) {
+      return std::string(pcap_geterr(pcap.get()));
+    }
+    if (pcap_setfilter(pcap.get(), &fp) == -1) {
+      return std::string(pcap_geterr(pcap.get()));
+    }
+  }
 
   int ret = pcap_setnonblock(pcap.get(), true, errbuf);
   if (ret != 0)
