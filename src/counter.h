@@ -11,6 +11,7 @@
 class Counter {
  public:
   Counter() : count_() {}
+  Counter(Counter const &c) : count_(c.count_) {}
 
   void Record(std::uint64_t value) {
     count_ += value;
@@ -20,6 +21,10 @@ class Counter {
   void PrintMetrics(const std::string& name, const MetricsLabels& labels,
                     MetricsPage* output) const {
     output->PrintMetric(name, labels, count_);
+  }
+
+  std::uint64_t inline Value() const {
+      return count_;
   }
 
  private:

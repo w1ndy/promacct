@@ -9,34 +9,44 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <algorithm>
 
 #include "ipv4_ranges.h"
 #include "packet_counter.h"
 
-PacketCounter::PacketCounter(const IPv4Ranges* aggregation_ipv4)
-    : range_ipv4_(aggregation_ipv4) {}
+#define MAX_NUM_ENTRIES 50000
+#define PREFERRED_NUM_ENTRIES 10000
 
-void PacketCounter::ProcessIPv4Packet(std::uint32_t src, std::uint32_t dst,
-                                      std::uint8_t protocol,
-                                      std::size_t original_length) {
-  packet_size_bytes_all_.Record(original_length);
-
-  // Aggregation on source IPv4 address.
-  {
-    std::optional<std::size_t> index = range_ipv4_->GetIndexByAddress(src);
-    if (index) {
-      valid_address_ipv4_[*index] = true;
-      packet_size_bytes_ipv4_tx_[*index].Record(original_length);
-    }
+std::map<std::string, Counter> collectGarbage(std::map<std::string, Counter> const &data) {
+  std::vector<std::pair<std::string, Counter>> tmp;
+  for (auto const &p : data) {
+    tmp.push_back(p);
   }
 
-  // Aggregation on destination IPv4 address.
-  {
-    std::optional<std::size_t> index = range_ipv4_->GetIndexByAddress(dst);
-    if (index) {
-      valid_address_ipv4_[*index] = true;
-      packet_size_bytes_ipv4_rx_[*index].Record(original_length);
-    }
+  sort(tmp.begin(), tmp.end(),
+    [](std::pair<std::string, Counter> const &a, std::pair<std::string, Counter> const &b) {
+      return a.second.Value() > b.second.Value();
+    });
+
+  int numEntries = (PREFERRED_NUM_ENTRIES < tmp.size()) ? PREFERRED_NUM_ENTRIES : tmp.size();
+  return std::map<std::string, Counter>(tmp.begin(), tmp.begin() + numEntries);
+}
+
+PacketCounter::PacketCounter(const IPv4Ranges* aggregation_ipv4) {}
+
+void PacketCounter::ProcessIPPacket(std::string const &src, std::string const &dst,
+                                    std::size_t original_length) {
+  packet_size_bytes_all_.Record(original_length);
+  packet_size_bytes_tx_[src].Record(original_length);
+  packet_size_bytes_rx_[dst].Record(original_length);
+
+  if (packet_size_bytes_tx_.size() > MAX_NUM_ENTRIES) {
+    std::cout << "GCing on packet_size_bytes_tx_" << std::endl;
+    packet_size_bytes_tx_ = collectGarbage(packet_size_bytes_tx_);
+  }
+  if (packet_size_bytes_rx_.size() > MAX_NUM_ENTRIES) {
+    std::cout << "GCing on packet_size_bytes_rx_" << std::endl;
+    packet_size_bytes_rx_ = collectGarbage(packet_size_bytes_rx_);
   }
 }
 
@@ -48,26 +58,14 @@ void PacketCounter::PrintMetrics(const MetricsLabels& labels,
                                  MetricsPage* output) {
   packet_size_bytes_all_.PrintMetrics("packet_size_bytes_all", labels, output);
 
-  for (auto const &p : valid_address_ipv4_) {
-    auto i = p.first;
-    // Combine the labels of the packet counter and the per-address
-    // histogram.
-    std::pair<const MetricsLabels*, std::uint32_t> addr =
-      range_ipv4_->GetAddressByIndex(i);
-    MetricsLabelsJoiner joiner1(&labels, addr.first);
-
-    // Add the IPv4 address as a label.
-    std::stringstream addr_ss;
-    addr_ss << (addr.second >> 24) << '.' << (addr.second >> 16 & 0xff) << '.'
-            << (addr.second >> 8 & 0xff) << '.' << (addr.second & 0xff);
-    std::string addr_str = addr_ss.str();
-    MetricsLabel ip("ip", addr_str);
-    MetricsLabelsJoiner joiner2(&joiner1, &ip);
-
-    // Print aggregated TX/RX statistics.
-    packet_size_bytes_ipv4_tx_[i].PrintMetrics("packet_size_bytes_ipv4_tx",
-                                               joiner2, output);
-    packet_size_bytes_ipv4_rx_[i].PrintMetrics("packet_size_bytes_ipv4_rx",
-                                               joiner2, output);
+  for (auto const &p : packet_size_bytes_tx_) {
+    MetricsLabel ip("ip", p.first);
+    MetricsLabelsJoiner joiner(&labels, &ip);
+    p.second.PrintMetrics("packet_size_bytes_tx", joiner, output);
+  }
+  for (auto const &p : packet_size_bytes_rx_) {
+    MetricsLabel ip("ip", p.first);
+    MetricsLabelsJoiner joiner(&labels, &ip);
+    p.second.PrintMetrics("packet_size_bytes_rx", joiner, output);
   }
 }

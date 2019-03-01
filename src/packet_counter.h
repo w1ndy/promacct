@@ -25,10 +25,9 @@ class PacketCounter : public ParsedPacketProcessor {
  public:
   explicit PacketCounter(const IPv4Ranges* aggregation_ipv4);
 
-  // Counts an IPv4 packet.
-  void ProcessIPv4Packet(std::uint32_t src, std::uint32_t dst,
-                         std::uint8_t protocol,
-                         std::size_t original_length) override;
+  // Counts an IP packet.
+  void ProcessIPPacket(std::string const &src, std::string const &dst,
+                       std::size_t original_length) override;
   // Counts a network packet of an unknown type.
   void ProcessUnknownPacket(std::size_t original_length) override;
 
@@ -36,23 +35,10 @@ class PacketCounter : public ParsedPacketProcessor {
   void PrintMetrics(const MetricsLabels& labels, MetricsPage* output);
 
  private:
-  // typedef Histogram<64, 128, 256, 512, 1024, 2048> PacketSizeHistogram;
-  // typedef ProtocolHistogram<PacketSizeHistogram> ProtocolPacketSizeHistogram;
-
-  // const IPv4Ranges* const aggregation_ipv4_;
-  const IPv4Ranges* const range_ipv4_;
-  std::map<size_t, bool> valid_address_ipv4_;
-
-  // Histogram storing the sizes of all incoming network packets.
   Counter packet_size_bytes_all_;
 
-  // Per-IPv4 address histogram storing the sizes of all packets having
-  // the address as its source.
-  std::map<size_t, Counter> packet_size_bytes_ipv4_tx_;
-
-  // Per-IPv4 address histogram storing the sizes of all packets having
-  // the address as its destination.
-  std::map<size_t, Counter> packet_size_bytes_ipv4_rx_;
+  std::map<std::string, Counter> packet_size_bytes_tx_;
+  std::map<std::string, Counter> packet_size_bytes_rx_;
 };
 
 #endif

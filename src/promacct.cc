@@ -30,26 +30,34 @@ namespace {
 class PacketCounterServer : public WebserverRequestHandler {
  public:
   PacketCounterServer(const std::vector<std::string>* interfaces,
-                      std::vector<PacketCounter>* packet_counters)
-      : interfaces_(interfaces), packet_counters_(packet_counters) {
+                      std::vector<PacketCounter>* packet_counters,
+                      MetricsLabels const *defaultLabels)
+      : interfaces_(interfaces), packet_counters_(packet_counters),
+        default_labels_(defaultLabels) {
   }
 
   void HandleRequest(std::ostream* output) override {
     MetricsPage page("promacct_", output);
     for (size_t i = 0; i < interfaces_->size(); ++i) {
       MetricsLabel interface("interface", (*interfaces_)[i]);
-      (*packet_counters_)[i].PrintMetrics(interface, &page);
+      if (default_labels_ != NULL) {
+        MetricsLabelsJoiner joiner(default_labels_, &interface);
+        (*packet_counters_)[i].PrintMetrics(joiner, &page);
+      } else {
+        (*packet_counters_)[i].PrintMetrics(interface, &page);
+      }
     }
   }
 
  private:
   const std::vector<std::string>* const interfaces_;
   std::vector<PacketCounter>* const packet_counters_;
+  MetricsLabels const *default_labels_;
 };
 
 void usage() {
   std::cerr << "usage: promacct -i interface ... [-p httpport] [-m monitor_port]"
-               "[-r startaddr-endaddr[:key=value...] ...]"
+               "[-t key=value:...] ...]"
             << std::endl;
   std::exit(1);
 }
@@ -70,9 +78,11 @@ int main(int argc, char* argv[]) {
   int monitor_port = -1;
   IPv4Ranges ranges;
   MetricsLabelsTerminator no_labels;
+  MetricsLabels *defaultLabels = NULL;
   std::forward_list<MetricsLabel> labels;
   std::forward_list<MetricsLabelsJoiner> joiners;
-  while ((ch = getopt(argc, argv, "i:p:m:r:")) != -1) {
+  while ((ch = getopt(argc, argv, "i:p:m:t:")) != -1) {
+    std::string_view arg(optarg);
     switch (ch) {
       case 'i':
         // Network interface.
@@ -86,34 +96,21 @@ int main(int argc, char* argv[]) {
         // port number to monitor
         monitor_port = std::stoi(optarg);
         break;
-      case 'r': {
-        // IP range: startaddr-endaddr[:key=value...].
-        // Extract start address and end address.
-        std::string_view arg(optarg);
-        auto endaddr = std::find(arg.begin(), arg.end(), '-');
-        if (endaddr == arg.end())
-          usage();
-        auto kvs = std::find(endaddr, arg.end(), ':');
-
-        // Extract labels.
-        const MetricsLabels* range_labels = &no_labels;
-        for (auto key = kvs; key != arg.end();) {
+      case 't':
+        defaultLabels = &no_labels;
+        for (auto key = arg.begin(); key != arg.end();) {
           auto value = std::find(key, arg.end(), '=');
           if (value == arg.end())
             usage();
           auto next = std::find(value, arg.end(), ':');
           // TODO(ed): Use C++17 emplace_front().
-          labels.emplace_front(std::string_view(key + 1, value - (key + 1)),
+          labels.emplace_front(std::string_view(key, value - key),
                                std::string_view(value + 1, next - (value + 1)));
-          joiners.emplace_front(range_labels, &labels.front());
-          range_labels = &joiners.front();
-          key = next;
+          joiners.emplace_front(defaultLabels, &labels.front());
+          defaultLabels = &joiners.front();
+          key = next != arg.end() ? next + 1 : arg.end();
         }
-        ranges.AddRange(range_labels,
-                        parse_ipv4_address(std::string(arg.begin(), endaddr)),
-                        parse_ipv4_address(std::string(endaddr + 1, kvs)));
         break;
-      }
       default:
         usage();
     }
@@ -147,7 +144,7 @@ int main(int argc, char* argv[]) {
   }
 
   // Create HTTP server that returns metrics for all interfaces.
-  PacketCounterServer packet_counter_server(&interfaces, &packet_counters);
+  PacketCounterServer packet_counter_server(&interfaces, &packet_counters, defaultLabels);
   Webserver webserver(&packet_counter_server);
   webserver.BindAndListen(httpport);
 
