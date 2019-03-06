@@ -16,9 +16,7 @@
 #include "raw_packet_processor.h"
 
 std::optional<std::string> Pcap::Activate(const std::string& device,
-                                          int port,
-                                          std::size_t snapshot_length,
-                                          std::size_t buffer_length) {
+                                          int port) {
   char errbuf[PCAP_ERRBUF_SIZE];
   std::unique_ptr<pcap_t, PcapDeleter> pcap(
       pcap_create(device.c_str(), errbuf));
@@ -26,8 +24,8 @@ std::optional<std::string> Pcap::Activate(const std::string& device,
     return std::string(errbuf);
 
   pcap_set_promisc(pcap.get(), false);
-  pcap_set_snaplen(pcap.get(), snapshot_length);
-  pcap_set_buffer_size(pcap.get(), buffer_length);
+  pcap_set_snaplen(pcap.get(), PCAP_SNAPSHOT_SIZE);
+  pcap_set_buffer_size(pcap.get(), PCAP_BUFFER_SIZE);
 
   if (pcap_activate(pcap.get()) != 0)
     return std::string(pcap_geterr(pcap.get()));

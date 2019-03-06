@@ -7,11 +7,19 @@
 #define PCAP_H
 
 #include <pcap/pcap.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netinet/if_ether.h>
 
 #include <cstddef>
 #include <memory>
 #include <optional>
 #include <string>
+
+#define ETHERNET_FRAME_SIZE 14
+#define PCAP_SNAPSHOT_SIZE  (ETHERNET_FRAME_SIZE + 40)
+#define PCAP_BUFFER_SIZE    (1 << 24)
 
 class RawPacketProcessor;
 
@@ -28,9 +36,7 @@ class Pcap {
  public:
   // Create a pcap handle for a network device and start capturing.
   std::optional<std::string> Activate(const std::string& device,
-                                      int port,
-                                      std::size_t snapshot_length,
-                                      std::size_t buffer_length);
+                                      int port);
 
   // Read the next batch of packets from the pcap handle and forward its
   // contents over to the raw packet processor.

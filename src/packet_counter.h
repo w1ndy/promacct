@@ -27,9 +27,9 @@ class PacketCounter : public ParsedPacketProcessor {
 
   // Counts an IP packet.
   void ProcessIPPacket(std::string const &src, std::string const &dst,
-                       std::size_t original_length) override;
+                       std::size_t length) override;
   // Counts a network packet of an unknown type.
-  void ProcessUnknownPacket(std::size_t original_length) override;
+  void ProcessUnknownPacket(std::size_t length) override;
 
   // Prints all of the stored histograms to the metrics page output.
   void PrintMetrics(const MetricsLabels& labels, MetricsPage* output);

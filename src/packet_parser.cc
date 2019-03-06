@@ -13,6 +13,7 @@
 #include <arpa/inet.h>
 #include <netinet/if_ether.h>
 
+#include "pcap.h"
 #include "packet_parser.h"
 #include "parsed_packet_processor.h"
 
@@ -22,29 +23,23 @@ u_int16_t ether_packet(const unsigned char *p) {
 }
 
 void PacketParser::ProcessPacket(std::basic_string_view<std::uint8_t> bytes,
-                                 std::size_t original_length) {
-  char src[INET6_ADDRSTRLEN + 1];
-  char dst[INET6_ADDRSTRLEN + 1];
-  // Strip off the ethernet header and don't account for it in the
-  // histograms. We're not interested in accounting the link layer.
-  assert(bytes.size() >= BytesNeededEthernetHeader);
-  assert(original_length >= bytes.size());
-  const u_int16_t type = ether_packet(bytes.data());
-  bytes.remove_prefix(BytesNeededEthernetHeader);
-  original_length -= BytesNeededEthernetHeader;
+                                 std::size_t length) {
+  char src[INET6_ADDRSTRLEN];
+  char dst[INET6_ADDRSTRLEN];
 
+  const u_int16_t type = ether_packet(bytes.data());
   switch (ntohs(type)) {
   case ETHERTYPE_IP:
-    inet_ntop(AF_INET, bytes.data() + 12, src, INET6_ADDRSTRLEN);
-    inet_ntop(AF_INET, bytes.data() + 16, dst, INET6_ADDRSTRLEN);
+    inet_ntop(AF_INET, bytes.data() + ETHERNET_FRAME_SIZE + 12, src, INET_ADDRSTRLEN);
+    inet_ntop(AF_INET, bytes.data() + ETHERNET_FRAME_SIZE + 16, dst, INET_ADDRSTRLEN);
     break;
   case ETHERTYPE_IPV6:
-    inet_ntop(AF_INET6, bytes.data() + 8, src, INET6_ADDRSTRLEN);
-    inet_ntop(AF_INET6, bytes.data() + 24, src, INET6_ADDRSTRLEN);
+    inet_ntop(AF_INET6, bytes.data() + ETHERNET_FRAME_SIZE + 8, src, INET6_ADDRSTRLEN);
+    inet_ntop(AF_INET6, bytes.data() + ETHERNET_FRAME_SIZE + 24, dst, INET6_ADDRSTRLEN);
     break;
   default:
-    processor_->ProcessUnknownPacket(original_length);
+    processor_->ProcessUnknownPacket(length);
     return;
   }
-  processor_->ProcessIPPacket(src, dst, original_length);
+  processor_->ProcessIPPacket(src, dst, length);
 }
